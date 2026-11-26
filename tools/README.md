@@ -1,6 +1,6 @@
 # Standalone Verilog module viewer
 
-`module_viewer.py` uses Yosys and Graphviz to render a **logical schematic for any selected module**, including modules that are not the chip top level. It first parses every module, infers top-level candidates by subtracting instantiated module types from defined module types, and reports the hierarchy. The selected module becomes a temporary Yosys top only for the export; it is not required to be an inferred top, and child instances remain visible when their definitions are available.
+`module_viewer.py` uses Yosys/Graphviz for Verilog and the GHDL-Yosys plugin for VHDL to render a **logical schematic for any selected module**, including modules that are not the chip top level. It first parses every module/entity, infers top-level candidates by subtracting instantiated module types from defined module types, and reports the hierarchy. The selected module becomes a temporary Yosys top only for the export; it is not required to be an inferred top, and child instances remain visible when their definitions are available.
 
 ```bash
 # List every module found in one or more source files
@@ -11,6 +11,10 @@ python3 tools/module_viewer.py rtl/*.v --module alu --output module-view/alu
 
 # If exactly one top-level candidate exists, render it automatically
 python3 tools/module_viewer.py rtl/*.v --output module-view/top
+
+# VHDL through GHDL-Yosys
+python3 tools/module_viewer.py --vhdl rtl/*.vhd --list-modules
+python3 tools/module_viewer.py --vhdl rtl/*.vhd --module alu --output module-view/alu
 ```
 
 The output contains:
@@ -21,4 +25,4 @@ The output contains:
 
 This output is technology-independent and does not require GDS/OASIS. It shows the hardware implied by synthesizable structural/RTL Verilog after Yosys has parsed and normalized it. It is not a physical layout and does not invent capacitors or process geometry.
 
-VHDL support is intentionally explicit: the command accepts `--vhdl` only when GHDL is installed, and currently reports that GHDL-Yosys integration must be configured. The next extension is to invoke the GHDL-Yosys front end, then feed its RTLIL into the same module-list and SVG export path.
+VHDL support uses the installed `ghdl` executable and `yosys-plugin-ghdl`. Entity names and entity/component references are used for top-level reporting; the selected entity is then imported by GHDL-Yosys and passed through the same logical SVG/JSON export path.

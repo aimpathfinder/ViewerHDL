@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -36,6 +37,17 @@ def parse_design(files: list[Path]) -> dict:
         tmp.unlink(missing_ok=True)
 
 
+def parse_vhdl_hierarchy(files: list[Path]) -> tuple[list[str], list[str]]:
+    """Discover VHDL entities and entity/component references for top inference."""
+    text = "\n".join(f.read_text(errors="ignore") for f in files)
+    entities = sorted(set(re.findall(r"\bentity\s+([A-Za-z_][\w]*)\s+is\b", text, re.I)))
+    refs = set(re.findall(r"\bentity\s+work\.([A-Za-z_][\w]*)", text, re.I))
+    refs.update(re.findall(r"\bcomponent\s+([A-Za-z_][\w]*)\s+is\b", text, re.I))
+    lowered = {name.lower(): name for name in entities}
+    instantiated = {lowered[r.lower()] for r in refs if r.lower() in lowered}
+    return entities, sorted(set(entities) - instantiated)
+
+
 def hierarchy_info(data: dict) -> tuple[list[str], list[str]]:
     modules = data.get("modules", {})
     names = sorted(modules)
@@ -50,22 +62,35 @@ def hierarchy_info(data: dict) -> tuple[list[str], list[str]]:
     return names, tops
 
 
-def render(files: list[Path], module: str, output: Path, keep_intermediate: bool, tops: list[str]) -> None:
+def render(files: list[Path], module: str, output: Path, keep_intermediate: bool, tops: list[str], language: str) -> None:
     output.mkdir(parents=True, exist_ok=True)
     safe_name = module.replace("/", "_").replace("\\", "_")
     json_path = output / f"{safe_name}.json"
     svg_prefix = output / safe_name
     quoted_files = " ".join(f'"{f}"' for f in files)
-    script = f"""
-      read_verilog -sv {quoted_files}
-      hierarchy -top {module}
-      proc
-      opt
-      check
-      write_json "{json_path}"
-      show -format svg -prefix {svg_prefix} -notitle {module}
-    """
-    result = run(["yosys", "-p", script])
+    vhdl_files = " ".join(str(f) for f in files)
+    if language == "vhdl":
+        script = f"""
+          ghdl --std=08 {vhdl_files} -e {module}
+          proc
+          opt
+          check
+          write_json "{json_path}"
+          show -format svg -prefix {svg_prefix} -notitle {module}
+        """
+        command = ["yosys", "-m", "ghdl", "-p", script]
+    else:
+        script = f"""
+          read_verilog -sv {quoted_files}
+          hierarchy -top {module}
+          proc
+          opt
+          check
+          write_json "{json_path}"
+          show -format svg -prefix {svg_prefix} -notitle {module}
+        """
+        command = ["yosys", "-p", script]
+    result = run(command)
     if result.returncode != 0:
         print(result.stdout, file=sys.stderr)
         print(result.stderr, file=sys.stderr)
@@ -83,6 +108,7 @@ def render(files: list[Path], module: str, output: Path, keep_intermediate: bool
         "json": str(json_path),
         "svg": str(svg_path),
         "mode": "standalone module view",
+        "language": language,
         "technology": "technology-independent logical schematic",
         "physical_layout": False,
     }
@@ -103,22 +129,23 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("module-view"), help="output directory")
     parser.add_argument("--list-modules", action="store_true", help="list modules and inferred top candidates")
     parser.add_argument("--keep-intermediate", action="store_true", help="keep Graphviz DOT output")
-    parser.add_argument("--vhdl", action="store_true", help="request VHDL mode and check for GHDL")
+    parser.add_argument("--vhdl", action="store_true", help="read VHDL files through GHDL-Yosys")
     args = parser.parse_args()
 
-    if args.vhdl:
-        if shutil.which("ghdl") is None:
-            raise SystemExit("VHDL mode requires GHDL plus the GHDL-Yosys plugin; ghdl is not installed.")
-        raise SystemExit("GHDL-Yosys is detected, but VHDL command integration is not configured in this build yet.")
+    language = "vhdl" if args.vhdl else "verilog"
+    if args.vhdl and (shutil.which("ghdl") is None or shutil.which("yosys") is None):
+        raise SystemExit("VHDL mode requires both GHDL and Yosys.")
     files = [f.resolve() for f in args.files]
     missing = [str(f) for f in files if not f.exists()]
     if missing:
         raise SystemExit("Input file(s) not found: " + ", ".join(missing))
     if shutil.which("yosys") is None or shutil.which("dot") is None:
         raise SystemExit("This tool requires both yosys and graphviz (dot).")
-
-    data = parse_design(files)
-    modules, tops = hierarchy_info(data)
+    if language == "vhdl":
+        modules, tops = parse_vhdl_hierarchy(files)
+    else:
+        data = parse_design(files)
+        modules, tops = hierarchy_info(data)
     if args.top and args.top not in tops:
         raise SystemExit(f"--top {args.top!r} is not an inferred top candidate: {', '.join(tops) or '(none)'}")
     print("Inferred top-level candidates:")
@@ -141,7 +168,7 @@ def main() -> int:
             raise SystemExit("Multiple or no top candidates found; choose --module or --top explicitly.")
     if selected not in modules:
         raise SystemExit(f"Unknown module {selected!r}. Use --list-modules first.")
-    render(files, selected, args.output, args.keep_intermediate, tops)
+    render(files, selected, args.output, args.keep_intermediate, tops, language)
     return 0
 
 
