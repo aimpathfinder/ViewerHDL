@@ -1,0 +1,8 @@
+{
+  "bundle": "C:\\path\\to\\my-hdl-tools",
+  "python": "C:\\path\\to\\my-hdl-tools\\bin\\python.exe",
+  "yosys": "C:\\path\\to\\my-hdl-tools\\bin\\yosys.exe",
+  "ghdl": "C:\\path\\to\\my-hdl-tools\\bin\\ghdl.exe",
+  "dot": "C:\\path\\to\\my-hdl-tools\\bin\\dot.exe",
+  "pluginPath": "C:\\path\\to\\my-hdl-tools\\plugins"
+}
