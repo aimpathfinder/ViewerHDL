@@ -26,3 +26,9 @@ The output contains:
 This output is technology-independent and does not require GDS/OASIS. It shows the hardware implied by synthesizable structural/RTL Verilog after Yosys has parsed and normalized it. It is not a physical layout and does not invent capacitors or process geometry.
 
 VHDL support uses the installed `ghdl` executable and `yosys-plugin-ghdl`. Entity names and entity/component references are used for top-level reporting; the selected entity is then imported by GHDL-Yosys and passed through the same logical SVG/JSON export path.
+
+## Desktop application import
+
+The portable Electron viewer includes an **Import HDL project** control. Select one or more `.v`, `.sv`, `.vh`, `.vhd`, `.vhdl`, or `.vho` files, choose Verilog/SystemVerilog or VHDL, and click **Analyze and open project**. The desktop host writes the selected sources to a temporary directory, runs this module viewer, infers top-level candidates, and opens the selected module's structural JSON in the same outlined logical graph used by the bundled KianV artifacts. Every discovered module/entity is available in the module selector, including modules that are not top-level candidates.
+
+The Windows portable package expects `python` or `python3`, `yosys`, and Graphviz `dot` on `PATH` for Verilog/SystemVerilog import. VHDL import additionally expects `ghdl` and the GHDL-Yosys Yosys plugin. The viewer reports a clear error when a prerequisite is missing. Generic import supports logical graph visualization and selected-gate illustrative CMOS expansion; the precomputed KianV artifacts additionally provide the whole-design transistor graph.

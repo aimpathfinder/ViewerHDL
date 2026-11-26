@@ -21,9 +21,13 @@
     "appId": "com.kianv.netlistviewer",
     "productName": "KianV Netlist Viewer",
     "asar": true,
+    "asarUnpack": [
+      "tools/**/*"
+    ],
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "tools/**/*",
       "package.json"
     ],
     "directories": {
