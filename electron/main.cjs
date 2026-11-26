@@ -51,6 +51,22 @@ function toolEnvironment(config) {
   const configuredBins = TOOL_NAMES.map(name => config[name] && path.dirname(config[name])).filter(Boolean);
   return { ...process.env, PATH: [...bundleBins, ...configuredBins, process.env.PATH || ''].join(path.delimiter), YOSYS_PLUGIN_PATH: config.pluginPath || process.env.YOSYS_PLUGIN_PATH || '' };
 }
+function discoverProjectBundle(filePaths = []) {
+  for (const filePath of filePaths) {
+    if (!filePath || !path.isAbsolute(filePath)) continue;
+    let current = path.dirname(filePath);
+    for (let depth = 0; depth < 8; depth += 1) {
+      for (const name of ['kianv-tools', 'kianv-toolchain']) {
+        const candidate = path.join(current, name);
+        if (fs.existsSync(path.join(candidate, 'bin')) || fs.existsSync(path.join(candidate, 'python.exe')) || fs.existsSync(path.join(candidate, 'python3'))) return candidate;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  }
+  return '';
+}
 function findPython(config = readToolConfig()) {
   const configured = findTool('python', config);
   const candidates = configured ? [configured] : (process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python']);
@@ -60,7 +76,7 @@ function findPython(config = readToolConfig()) {
 
 function importHdl(payload) {
   const files = Array.isArray(payload.files) ? payload.files : []; if (!files.length) throw new Error('Choose at least one HDL file.');
-  const language = payload.language === 'vhdl' ? 'vhdl' : 'verilog'; const config = readToolConfig(); const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'kianv-import-'));
+  const language = payload.language === 'vhdl' ? 'vhdl' : 'verilog'; const configured = readToolConfig(); const projectBundle = discoverProjectBundle(payload.paths || []); const config = { ...configured, bundle: configured.bundle || projectBundle }; const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'kianv-import-'));
   try {
     const paths = files.map((file, index) => { const safe = path.basename(String(file.name || `source_${index}`)).replace(/[^A-Za-z0-9_.-]/g, '_') || `source_${index}`; const target = path.join(temp, `${String(index).padStart(3, '0')}_${safe}`); fs.writeFileSync(target, String(file.content || ''), 'utf8'); return target; });
     const python = findPython(config); const unpackedViewer = path.join(process.resourcesPath, 'app.asar.unpacked', 'tools', 'module_viewer.py'); const viewer = fs.existsSync(unpackedViewer) ? unpackedViewer : path.join(root, 'tools', 'module_viewer.py'); const languageArgs = language === 'vhdl' ? ['--vhdl'] : []; const env = toolEnvironment(config);
@@ -72,7 +88,7 @@ function importHdl(payload) {
     const output = path.join(temp, 'rendered'); const render = spawnSync(python, [viewer, ...languageArgs, ...paths, '--module', selected, '--output', output], { cwd: root, env, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
     if (render.status !== 0) throw new Error((render.stderr || render.stdout || `Could not render module ${selected}.`).trim());
     const jsonFile = fs.readdirSync(output).find(name => name.endsWith('.json') && !name.endsWith('.meta.json')); if (!jsonFile) throw new Error('No structural JSON netlist was produced.');
-    return { key: 'imported', label: `Imported ${language.toUpperCase()} project · ${selected}`, source: files.map(file => file.name).join(', '), language, module: selected, modules, tops, raw: JSON.parse(fs.readFileSync(path.join(output, jsonFile), 'utf8')) };
+    return { key: 'imported', label: `Imported ${language.toUpperCase()} project · ${selected}`, source: files.map(file => file.name).join(', '), language, module: selected, modules, tops, bundle: config.bundle || '', raw: JSON.parse(fs.readFileSync(path.join(output, jsonFile), 'utf8')) };
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 }
 
