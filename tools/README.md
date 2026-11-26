@@ -1,6 +1,6 @@
 # Standalone Verilog module viewer
 
-`module_viewer.py` uses Yosys and Graphviz to render a **logical schematic for any selected module**, including modules that are not the chip top level. The selected module becomes a temporary Yosys top only for the export; it is not required to be the project’s CPU top, and child instances remain visible when their definitions are available.
+`module_viewer.py` uses Yosys and Graphviz to render a **logical schematic for any selected module**, including modules that are not the chip top level. It first parses every module, infers top-level candidates by subtracting instantiated module types from defined module types, and reports the hierarchy. The selected module becomes a temporary Yosys top only for the export; it is not required to be an inferred top, and child instances remain visible when their definitions are available.
 
 ```bash
 # List every module found in one or more source files
@@ -8,6 +8,9 @@ python3 tools/module_viewer.py rtl/*.v --list-modules
 
 # Render one module without rendering the complete chip
 python3 tools/module_viewer.py rtl/*.v --module alu --output module-view/alu
+
+# If exactly one top-level candidate exists, render it automatically
+python3 tools/module_viewer.py rtl/*.v --output module-view/top
 ```
 
 The output contains:

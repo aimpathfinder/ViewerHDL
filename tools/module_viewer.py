@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Render any synthesizable Verilog module as a standalone logical schematic.
 
-This intentionally does not flatten the selected module. The selected module is
-made the temporary Yosys top so it can be viewed independently of the chip top.
-Child modules remain hierarchical cells when their definitions are available.
+The tool parses every module first, infers top-level candidates from module
+instantiation relationships, then lets the user render either an inferred top
+or any non-top module independently.
 """
 from __future__ import annotations
 
@@ -15,36 +15,46 @@ import sys
 from pathlib import Path
 
 
-def run(cmd: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(cmd, cwd=cwd, text=True, capture_output=True, check=False)
+        return subprocess.run(cmd, text=True, capture_output=True, check=False)
     except FileNotFoundError as exc:
         raise SystemExit(f"Required executable not found: {cmd[0]}") from exc
 
 
-def discover_modules(files: list[Path]) -> list[str]:
-    # Read without selecting a top so every module definition remains available.
+def parse_design(files: list[Path]) -> dict:
+    """Parse without choosing a top, preserving every module definition."""
     script = "read_verilog -sv " + " ".join(f'"{f}"' for f in files) + ";"
-    result = run(["yosys", "-q", "-p", script])
-    if result.returncode != 0:
-        print(result.stderr or result.stdout, file=sys.stderr)
-        raise SystemExit("Yosys could not parse the Verilog input.")
-    # A JSON dump gives an authoritative module list without scraping logs.
     tmp = files[0].parent / ".module-viewer-discovery.json"
     result = run(["yosys", "-q", "-p", script + f' write_json "{tmp}"'])
     if result.returncode != 0 or not tmp.exists():
-        raise SystemExit(result.stderr or "Yosys did not produce a discovery netlist.")
+        print(result.stderr or result.stdout, file=sys.stderr)
+        raise SystemExit("Yosys could not parse the Verilog input.")
     try:
-        data = json.loads(tmp.read_text())
-        return sorted(data.get("modules", {}).keys())
+        return json.loads(tmp.read_text())
     finally:
         tmp.unlink(missing_ok=True)
 
 
-def render(files: list[Path], module: str, output: Path, keep_intermediate: bool) -> None:
+def hierarchy_info(data: dict) -> tuple[list[str], list[str]]:
+    modules = data.get("modules", {})
+    names = sorted(modules)
+    defined = set(names)
+    instantiated: set[str] = set()
+    for module in modules.values():
+        for cell in module.get("cells", {}).values():
+            cell_type = cell.get("type", "")
+            if cell_type in defined and cell_type != module:
+                instantiated.add(cell_type)
+    tops = sorted(defined - instantiated)
+    return names, tops
+
+
+def render(files: list[Path], module: str, output: Path, keep_intermediate: bool, tops: list[str]) -> None:
     output.mkdir(parents=True, exist_ok=True)
-    json_path = output / f"{module}.json"
-    svg_prefix = output / module
+    safe_name = module.replace("/", "_").replace("\\", "_")
+    json_path = output / f"{safe_name}.json"
+    svg_prefix = output / safe_name
     quoted_files = " ".join(f'"{f}"' for f in files)
     script = f"""
       read_verilog -sv {quoted_files}
@@ -60,16 +70,15 @@ def render(files: list[Path], module: str, output: Path, keep_intermediate: bool
         print(result.stdout, file=sys.stderr)
         print(result.stderr, file=sys.stderr)
         raise SystemExit(f"Yosys could not render module {module!r}.")
-    svg_path = output / f"{module}.svg"
-    dot_path = output / f"{module}.dot"
-    # Yosys/Graphviz may use a .svg extension directly; normalize if needed.
-    generated = output / f"{module}.svg"
-    if not generated.exists():
-        candidates = list(output.glob(f"{module}*.svg"))
+    svg_path = output / f"{safe_name}.svg"
+    dot_path = output / f"{safe_name}.dot"
+    if not svg_path.exists():
+        candidates = list(output.glob(f"{safe_name}*.svg"))
         if candidates:
-            candidates[0].rename(generated)
+            candidates[0].rename(svg_path)
     metadata = {
         "module": module,
+        "inferred_top_candidates": tops,
         "inputs": [str(f) for f in files],
         "json": str(json_path),
         "svg": str(svg_path),
@@ -77,7 +86,7 @@ def render(files: list[Path], module: str, output: Path, keep_intermediate: bool
         "technology": "technology-independent logical schematic",
         "physical_layout": False,
     }
-    (output / f"{module}.meta.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    (output / f"{safe_name}.meta.json").write_text(json.dumps(metadata, indent=2) + "\n")
     if not keep_intermediate:
         dot_path.unlink(missing_ok=True)
     print(f"module: {module}")
@@ -89,9 +98,10 @@ def render(files: list[Path], module: str, output: Path, keep_intermediate: bool
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("files", nargs="+", type=Path, help="Verilog/SystemVerilog source files")
-    parser.add_argument("--module", help="module to render; omit with --list-modules")
+    parser.add_argument("--module", help="module to render; defaults to the unique inferred top")
+    parser.add_argument("--top", help="explicit top candidate to report/select when multiple exist")
     parser.add_argument("--output", type=Path, default=Path("module-view"), help="output directory")
-    parser.add_argument("--list-modules", action="store_true", help="list all parsed modules and exit")
+    parser.add_argument("--list-modules", action="store_true", help="list modules and inferred top candidates")
     parser.add_argument("--keep-intermediate", action="store_true", help="keep Graphviz DOT output")
     parser.add_argument("--vhdl", action="store_true", help="request VHDL mode and check for GHDL")
     args = parser.parse_args()
@@ -106,16 +116,32 @@ def main() -> int:
         raise SystemExit("Input file(s) not found: " + ", ".join(missing))
     if shutil.which("yosys") is None or shutil.which("dot") is None:
         raise SystemExit("This tool requires both yosys and graphviz (dot).")
-    modules = discover_modules(files)
-    if args.list_modules or not args.module:
-        print("Parsed modules:")
-        for name in modules:
-            print(f"  {name}")
-        if not args.module:
-            return 0
-    if args.module not in modules:
-        raise SystemExit(f"Unknown module {args.module!r}. Use --list-modules first.")
-    render(files, args.module, args.output, args.keep_intermediate)
+
+    data = parse_design(files)
+    modules, tops = hierarchy_info(data)
+    if args.top and args.top not in tops:
+        raise SystemExit(f"--top {args.top!r} is not an inferred top candidate: {', '.join(tops) or '(none)'}")
+    print("Inferred top-level candidates:")
+    for name in tops:
+        print(f"  {name}")
+    print("Parsed modules:")
+    for name in modules:
+        marker = " [top candidate]" if name in tops else ""
+        print(f"  {name}{marker}")
+    if args.list_modules:
+        return 0
+
+    selected = args.module
+    if selected is None:
+        if args.top:
+            selected = args.top
+        elif len(tops) == 1:
+            selected = tops[0]
+        else:
+            raise SystemExit("Multiple or no top candidates found; choose --module or --top explicitly.")
+    if selected not in modules:
+        raise SystemExit(f"Unknown module {selected!r}. Use --list-modules first.")
+    render(files, selected, args.output, args.keep_intermediate, tops)
     return 0
 
 
