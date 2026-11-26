@@ -1,0 +1,6 @@
+release/
+release-portable/
+KianV-HDL-Tool-Bundle-Template.zip
+node_modules/
+*.log
+tools/__pycache__/
