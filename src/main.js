@@ -36,6 +36,7 @@ const moduleSelect = $('#module');
 artifactSelect.innerHTML = Object.entries(artifacts).map(([k,a])=>`<option value="${k}">${a.label}</option>`).join('');
 artifactSelect.value = state.key;
 $('#artifact-list').innerHTML = Object.entries(artifacts).map(([k,a])=>`<button class="artifact ${k===state.key?'selected':''}" data-artifact="${k}"><span>${a.label.split(' · ')[0]}</span><span>${k}</span></button>`).join('');
+const outputPanel=document.createElement('div'); outputPanel.innerHTML=`<div class="output-title">Whole-design transistor outputs</div><div class="output-note">Each JSON preserves all synthesized modules and instances. Expanded cells carry explicit MOS devices; sequential or unresolved macros are marked in the file.</div><div class="output-grid"><a class="small-btn" href="/transistor/manifest.json" target="_blank">Manifest</a>${Object.keys(artifacts).map(k=>`<a class="small-btn" href="/transistor/${k}.json" target="_blank">${k==='kianv_harris_mc_edition'?'Whole CPU':k}</a>`).join('')}</div>`; document.querySelector('#artifact-list').after(outputPanel);
 
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function normalize(raw, moduleName){
