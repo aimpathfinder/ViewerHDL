@@ -1,4 +1,4 @@
-# KianV Netlist Viewer
+# ViewerHDL
 
 - [x] Load and select the verified KianV CPU and module netlists from the project artifacts.
 - [x] Display a searchable, pannable, zoomable gate-level connectivity graph with cell and net selection.

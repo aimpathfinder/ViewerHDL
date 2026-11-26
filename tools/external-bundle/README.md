@@ -1,6 +1,6 @@
 # External HDL tool bundle integration
 
-KianV can use an existing HDL tool directory instead of requiring tools to be installed system-wide. The simplest project layout is to put the bundle beside the HDL sources:
+ViewerHDL can use an existing HDL tool directory instead of requiring tools to be installed system-wide. The simplest project layout is to put the bundle beside the HDL sources:
 
 ```text
 my-project/
@@ -17,7 +17,7 @@ my-project/
       ghdl.dll
 ```
 
-When HDL files are selected from the desktop viewer, KianV walks their parent directories and automatically discovers `kianv-tools` or `kianv-toolchain`. No global installation or `PATH` change is needed. The bundle can also be entered manually under **HDL toolchain → External bundle folder**, then saved.
+When HDL files are selected from the desktop viewer, ViewerHDL walks their parent directories and automatically discovers `kianv-tools` or `kianv-toolchain`. No global installation or `PATH` change is needed. The bundle can also be entered manually under **HDL toolchain → External bundle folder**, then saved.
 
 The viewer checks the bundle root and its `bin` subdirectory first, then checks individually configured executable paths, then falls back to `PATH`.
 

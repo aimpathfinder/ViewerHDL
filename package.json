@@ -1,5 +1,5 @@
 {
-  "name": "kianv-netlist-viewer",
+  "name": "viewerhdl",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -18,8 +18,8 @@
   },
   "main": "electron/main.cjs",
   "build": {
-    "appId": "com.kianv.netlistviewer",
-    "productName": "KianV Netlist Viewer",
+    "appId": "com.viewerhdl.app",
+    "productName": "ViewerHDL",
     "asar": true,
     "asarUnpack": [
       "tools/**/*"
@@ -38,7 +38,7 @@
         "nsis",
         "portable"
       ],
-      "artifactName": "KianV-Netlist-Viewer-${version}-${arch}.${ext}"
+      "artifactName": "ViewerHDL-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
