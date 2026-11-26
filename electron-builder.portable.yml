@@ -1,0 +1,15 @@
+appId: com.kianv.netlistviewer
+productName: KianV Netlist Viewer
+asar: true
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+directories:
+  output: release-portable
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+  artifactName: KianV-Netlist-Viewer-${version}-${arch}.${ext}
